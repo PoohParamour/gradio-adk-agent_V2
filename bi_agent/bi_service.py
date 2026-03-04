@@ -3,11 +3,59 @@ Business Intelligence Service Module
 
 This module provides a clean interface for database operations,
 keeping the app.py focused on UI and agent orchestration.
+
+Also exports _query_cache — a module-level LRU cache for pipeline results.
 """
 
 import pandas as pd
 import json
-from typing import Dict, Tuple, Optional
+from collections import OrderedDict
+from typing import Dict, Tuple, Optional, Any
+
+
+# ============================================================================
+# In-memory LRU cache for pipeline results
+# ============================================================================
+
+class QueryCache:
+    """
+    Thread-safe LRU cache for BI pipeline results.
+
+    Key   = question.strip().lower()
+    Value = (sql_query, df, chart, explanation_text)
+    Evicts the oldest entry when max_size is exceeded.
+    """
+
+    def __init__(self, max_size: int = 50):
+        self._cache: OrderedDict = OrderedDict()
+        self._max_size = max_size
+
+    def get(self, question: str) -> Any:
+        """Return cached result or None if not cached."""
+        key = question.strip().lower()
+        if key in self._cache:
+            self._cache.move_to_end(key)   # Mark as recently used
+            return self._cache[key]
+        return None
+
+    def set(self, question: str, value: Any) -> None:
+        """Store a result, evicting the oldest entry if at capacity."""
+        key = question.strip().lower()
+        if key in self._cache:
+            self._cache.move_to_end(key)
+        self._cache[key] = value
+        if len(self._cache) > self._max_size:
+            self._cache.popitem(last=False)   # Remove oldest
+
+    def __len__(self) -> int:
+        return len(self._cache)
+
+    def __contains__(self, question: str) -> bool:
+        return question.strip().lower() in self._cache
+
+
+# Module-level cache instance shared across all requests
+_query_cache = QueryCache(max_size=50)
 from sqlalchemy.engine import Engine
 
 from .db_config import create_db_engine, get_schema_info, validate_connection

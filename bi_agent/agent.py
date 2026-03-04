@@ -1,120 +1,216 @@
 """
 Agent definitions for the Business Intelligence pipeline.
 
-This module uses Google ADK's SequentialAgent to chain agents together:
-- Text-to-SQL Agent: Converts natural language to SQL queries
-- Visualization Agent: Generates Altair charts from data
-- Explanation Agent: Provides plain-language insights
+Pipeline (3 LLM calls, 2 pure-Python steps):
+  1. text_to_sql_agent        (LlmAgent)  — NL → SQL               [1 API call]
+  2. python_sql_executor      (BaseAgent) — execute SQL + format    [0 API calls]
+  3. visualization_agent      (LlmAgent)  — data → Altair code      [1 API call]
+  4. explanation_agent        (LlmAgent)  — data → business text    [1 API call]
+                                                            Total:   3 API calls
 """
+
+import os
+import json
+from typing import AsyncGenerator
+from dotenv import load_dotenv
 
 from google.adk.agents.llm_agent import LlmAgent
 from google.adk.agents.sequential_agent import SequentialAgent
+from google.adk.agents.base_agent import BaseAgent
+from google.adk.agents.invocation_context import InvocationContext
+from google.adk.events import Event, EventActions
 from google.adk.runners import InMemoryRunner
-from bi_agent.tools import execute_sql_and_format, get_database_schema
+from bi_agent.tools import execute_sql_and_format
 
-GEMINI_MODEL = "gemini-2.5-flash"
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '.env'))
+GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemini-2.5-flash')
 
 
 # ============================================================================
-# Agent 1: Text-to-SQL (standalone)
+# Full database schema — embedded to avoid extra API round-trips
+# ============================================================================
+
+DB_SCHEMA = """
+DATABASE: AdventureBikes Sales DataMart (Microsoft SQL Server 2019)
+
+=== PRE-JOINED DATASET TABLES (preferred — no JOINs required) ===
+
+Table: dbo.DataSet_Monthly_Sales
+  Purpose: Fully denormalized monthly sales. Use for most sales/revenue analyses.
+  Columns:
+    Calendar_Year        (char)     — e.g. '2021', '2022', '2023', '2024', '2025'
+    Calendar_Quarter     (char)     — e.g. 'Q1', 'Q2', 'Q3', 'Q4'
+    Calendar_Month_ISO   (char)     — format 'YYYY.MM', e.g. '2024.01'
+    Calendar_Month       (nvarchar) — e.g. 'January 2024'
+    Global_Region        (nvarchar)
+    Sales_Country        (nvarchar) — values: France, Germany, Netherlands,
+                                       Switzerland, United Kingdom, United States
+    Country_Region       (nvarchar)
+    Sales_Office         (nvarchar)
+    Local_Currency       (char)
+    Sales_Channel        (nvarchar) — values: 'Internet Sales', 'Reseller'
+    Material_Number      (nvarchar)
+    Material_Description (nvarchar) — product name
+    Product_Line         (nvarchar) — value: 'Bicycles'
+    Product_Category     (nvarchar) — values: City Bikes, Kid Bikes, Mountain Bikes,
+                                       Race Bikes, Trekking Bikes
+    Revenue              (money)    — revenue in local currency
+    Revenue_EUR          (money)    — revenue in EUR
+    Discount             (money)    — discount in local currency
+    Discount_EUR         (money)    — discount in EUR
+    Sales_Amount         (int)      — number of units sold
+    Transfer_Price_EUR   (money)    — cost/transfer price in EUR
+    Currency_Rate        (money)
+    Refresh_Date         (datetime)
+
+Table: dbo.DataSet_Monthly_Sales_and_Quota
+  Purpose: Sales vs quota comparison. IMPORTANT: all column names have spaces —
+           ALWAYS use [bracket notation] when referencing these columns.
+  Columns:
+    [Sales Organisation] (nvarchar), [Sales Country] (nvarchar),
+    [Sales Region]       (nvarchar), [Sales City] (nvarchar),
+    [Product Line]       (nvarchar), [Product Category] (nvarchar),
+    [Calendar Year]      (char),     [Calendar Quarter] (char),
+    [Calendar Month ISO] (char),     [Calendar Month] (nvarchar),
+    [Sales Amount Quota] (numeric),  [Revenue Quota] (money),
+    [Sales Amount]       (numeric),  [Revenue EUR] (money),
+    [Discount EUR]       (money),    [Gross Profit EUR] (money),
+    [Revenue Diff]       (money),    [Gross Profit Diff] (money),
+    [Sales Amount Diff]  (numeric),  [Discount Diff] (money)
+
+Table: dbo.DataSet_Monthly_SalesQuota
+  Purpose: Monthly quota targets by region and product.
+  Columns:
+    Calendar_DueDate (date), Calendar_Year (char), Calendar_Quarter (char),
+    Calendar_Month_ISO (char), Calendar_Month (nvarchar),
+    Global_Region (nvarchar), Sales_Country (nvarchar), Sales_Region (nvarchar),
+    Sales_Office (nvarchar), Local_Currency (char), Product_Category (nvarchar),
+    Sales_Amount_Quota (numeric), Revenue_Quota (money), Revenue_Quota_EUR (money)
+
+=== DIMENSION TABLES (lookup / master data) ===
+
+Table: dbo.Dim_Product          (ID_Product PK)
+  Columns: Material_Description (nvarchar), Material_Number (nvarchar),
+           Product_Category (nvarchar), Product_Line (nvarchar),
+           Transfer_Price_EUR (money), Product_Price_EUR (numeric),
+           Price_Segment (nvarchar), Days_for_Shipping (int)
+
+Table: dbo.Dim_Sales_Office     (ID_Sales_Office PK)
+  Columns: Sales_Office (nvarchar), Local_Currency (nchar),
+           Sales_Region (nvarchar), Sales_Country (nvarchar),
+           Global_Region (nvarchar), State (nvarchar),
+           GEO_Latitude (float), GEO_Longitude (float)
+
+Table: dbo.Dim_Sales_Channel    (ID_Sales_Channel PK)
+  Columns: Sales_Channel (nvarchar), Sales_Channel_Manager (nvarchar)
+
+Table: dbo.Dim_Product_Category (ID_Product_Category PK)
+  Columns: Product_Category (nvarchar), Product_Line (nvarchar)
+
+Table: dbo.Dim_Calendar_Month   (ID_Calendar_Month date PK)
+  Columns: Calendar_Month_ISO (nchar), Calendar_Month_Name (nvarchar),
+           Calendar_Month_Number (int), Calendar_Quarter (nchar),
+           Calendar_Year (int), Last_Day_Of_Month (date)
+
+Table: dbo.Dim_Currency         (ID_Currency PK)
+  Columns: Currency_ISO_Code (nvarchar), Currency_Name (nvarchar)
+
+=== FACT TABLES (use with JOINs to Dim_ tables) ===
+
+Table: dbo.Facts_Monthly_Sales
+  Columns: ID_Calendar_Month (date FK→Dim_Calendar_Month), ID_Currency (int FK),
+           ID_Product (int FK→Dim_Product), ID_Sales_Channel (int FK),
+           ID_Sales_Office (int FK→Dim_Sales_Office),
+           Revenue (money), Discount (money), Sales_Amount (int), Transfer_Price (money)
+
+Table: dbo.Facts_Daily_Sales
+  Columns: ID_Order_Date (date), ID_Shipping_Date (date), ID_Currency (int FK),
+           ID_Product (int FK), ID_Sales_Channel (int FK), ID_Sales_Office (int FK),
+           Revenue (money), Discount (money), Sales_Amount (int)
+
+Table: dbo.Facts_Monthly_Sales_Quota
+  Columns: ID_Calendar_Month (date FK), ID_Planning_Version (int),
+           ID_Product_Category (int FK), ID_Price_Segment (int FK),
+           ID_Currency (int FK), ID_Sales_Office (int FK),
+           Revenue_Quota (money), Sales_Amount_Quota (int)
+
+Table: dbo.Facts_Weekly_Sales_Orders
+  Columns: ID_Order_Week (date), ID_Shipping_Week (date), ID_DueDate_Week (date),
+           ID_Currency (int FK), ID_Product (int FK), ID_Sales_Channel (int FK),
+           ID_Sales_Office (int FK), Revenue (money), Discount (money), Sales_Amount (int)
+"""
+
+
+# ============================================================================
+# Agent 1: Text-to-SQL
 # ============================================================================
 
 text_to_sql_agent = LlmAgent(
     model=GEMINI_MODEL,
     name='text_to_sql_agent',
-    description="Converts natural language questions to SQL queries.",
-    instruction="""
-<system_prompt>
+    description="Converts natural language questions to SQL SELECT queries.",
+    instruction=f"""
+<role>
+You are a Senior Database Engineer specializing in Microsoft SQL Server with 10+ years of
+Business Intelligence experience. You write precise, optimized SQL SELECT queries that answer
+business questions using the AdventureBikes Sales DataMart.
+</role>
 
-## Context
-You are operating in a Business Intelligence environment with access to a Microsoft SQL Server database.
-You have a tool to retrieve the database schema and will receive user questions about the data.
+<database_schema>
+{DB_SCHEMA}
+</database_schema>
 
-## Objective
-Your primary goal is to generate accurate, efficient SQL SELECT queries that answer the user's natural language question.
-Success is defined by: (1) syntactically correct SQL, (2) using only schema-valid tables/columns, and (3) logically answering the question.
+<rules>
+ABSOLUTE CONSTRAINTS — never violate these:
+1. OUTPUT ONLY the raw SQL query. No markdown fences, no explanations, no semicolons.
+2. USE ONLY SELECT statements. Never write INSERT, UPDATE, DELETE, DROP, ALTER,
+   TRUNCATE, EXEC, EXECUTE, CREATE, GRANT, REVOKE, or any stored procedure call.
+3. USE ONLY tables and columns listed in the schema above. Never guess names.
+4. For dbo.DataSet_Monthly_Sales_and_Quota: ALWAYS wrap column names in [square brackets]
+   because they contain spaces.
+5. Prefer dbo.DataSet_Monthly_Sales for most analyses — it is pre-joined and requires
+   no additional JOINs.
+6. Use TOP N (not LIMIT) for SQL Server row limiting.
+7. Do not include a semicolon at the end of the query.
+</rules>
 
-## Mode
-Act as a Senior Database Engineer with 10+ years of experience writing optimized SQL queries for Microsoft SQL Server.
-You prioritize query correctness and readability over complexity.
-
-## People of Interest
-Your queries will be executed by a Business Intelligence system and the results shown to business analysts and non-technical stakeholders.
-
-## Attitude
-Be precise and methodical. Never guess table or column names - use only what exists in the schema.
-If the question is ambiguous, choose the most reasonable interpretation based on available data.
-Never make up data or assume tables exist that are not in the schema.
-
-## Style
-Output ONLY the raw SQL query as plain text.
-Do NOT include:
-- Markdown code blocks (no ```sql)
-- Explanations or comments
-- Semicolons at the end
-- Any text before or after the query
-
-## Specifications
-HARD CONSTRAINTS:
-1. ALWAYS use the get_database_schema tool FIRST to retrieve the database structure
-2. Use ONLY SELECT statements (NEVER INSERT, UPDATE, DELETE, DROP, ALTER, TRUNCATE)
-3. Reference ONLY tables and columns present in the schema
-4. Do NOT include semicolons at the end of queries
-5. Do NOT wrap output in markdown code blocks
-
-</system_prompt>
-
-<instructions>
-Before generating the SQL query, follow this process:
-
-<thinking_process>
-1. Use the get_database_schema tool to retrieve available tables and columns
-2. Identify the user's question and extract key entities (what data they want)
-3. Map the question to relevant tables and columns in the schema
-4. Determine if JOINs are needed (multiple tables?)
-5. Determine if aggregation is needed (COUNT, SUM, AVG, etc.)
-6. Determine if filtering is needed (WHERE clause)
-7. Determine if sorting/limiting is needed (ORDER BY, TOP N)
-8. Construct the SQL query using proper syntax
-</thinking_process>
-
-SQL QUERY CONSTRUCTION RULES:
-- Use TOP N when question implies "top", "best", "highest", "most", etc.
-- Use aggregate functions (COUNT, SUM, AVG, MIN, MAX) for totals and averages
-- Use GROUP BY when aggregating by categories
-- Use proper JOIN syntax (INNER JOIN, LEFT JOIN) when combining tables
-- Use WHERE clauses for filtering conditions
-- Use ORDER BY for sorting (ASC or DESC)
-- Format queries for readability (clear spacing, logical structure)
-</instructions>
+<query_construction_guide>
+- "top N" / "best" / "highest" / "most" → SELECT TOP N ... ORDER BY ... DESC
+- "total" / "sum" / "count" / "average" → SUM(), COUNT(), AVG() with GROUP BY
+- "by month" / "monthly trend" / "over time" → GROUP BY Calendar_Month_ISO ORDER BY Calendar_Month_ISO
+- "by year" → GROUP BY Calendar_Year ORDER BY Calendar_Year
+- "by category" → GROUP BY Product_Category
+- "by country" → GROUP BY Sales_Country
+- "by channel" → GROUP BY Sales_Channel
+- "compare" / "vs quota" → use DataSet_Monthly_Sales_and_Quota with [bracket notation]
+- Revenue analyses → use Revenue_EUR (EUR normalized) unless local currency requested
+- Gross profit → Revenue_EUR - Transfer_Price_EUR * Sales_Amount
+</query_construction_guide>
 
 <examples>
-  <example>
-    <input>
-      Schema: Products (Product_ID, Product_Name, Price, Category_ID)
-      Question: "What are the top 5 products by price?"
-    </input>
-    <output>SELECT TOP 5 Product_Name, Price FROM Products ORDER BY Price DESC</output>
-  </example>
+Example 1 — Top products by price:
+Question: "What are the top 5 most expensive products?"
+SQL: SELECT TOP 5 Material_Description, Product_Category, Transfer_Price_EUR FROM dbo.Dim_Product ORDER BY Transfer_Price_EUR DESC
 
-  <example>
-    <input>
-      Schema: Orders (Order_ID, Customer_ID, Order_Date, Total_Amount)
-      Question: "How many orders were placed in 2024?"
-    </input>
-    <output>SELECT COUNT(*) AS Total_Orders FROM Orders WHERE YEAR(Order_Date) = 2024</output>
-  </example>
+Example 2 — Monthly revenue trend:
+Question: "Show monthly revenue trend for 2024"
+SQL: SELECT Calendar_Month_ISO, Calendar_Month, SUM(Revenue_EUR) AS Total_Revenue_EUR FROM dbo.DataSet_Monthly_Sales WHERE Calendar_Year = '2024' GROUP BY Calendar_Month_ISO, Calendar_Month ORDER BY Calendar_Month_ISO
 
-  <example>
-    <input>
-      Schema: Sales (Sale_ID, Product_ID, Quantity, Sale_Date), Products (Product_ID, Product_Name, Category)
-      Question: "What is the total quantity sold for each product category?"
-    </input>
-    <output>SELECT p.Category, SUM(s.Quantity) AS Total_Quantity FROM Sales s INNER JOIN Products p ON s.Product_ID = p.Product_ID GROUP BY p.Category</output>
-  </example>
+Example 3 — Revenue by product category:
+Question: "What is the total revenue by product category?"
+SQL: SELECT Product_Category, SUM(Revenue_EUR) AS Total_Revenue_EUR, SUM(Sales_Amount) AS Total_Units FROM dbo.DataSet_Monthly_Sales GROUP BY Product_Category ORDER BY Total_Revenue_EUR DESC
+
+Example 4 — Sales by country with discount:
+Question: "Show total sales amount and discount by country"
+SQL: SELECT Sales_Country, SUM(Sales_Amount) AS Total_Units, SUM(Discount_EUR) AS Total_Discount_EUR FROM dbo.DataSet_Monthly_Sales GROUP BY Sales_Country ORDER BY Total_Units DESC
+
+Example 5 — Sales vs quota comparison:
+Question: "How does actual revenue compare to quota by product category?"
+SQL: SELECT [Product Category], SUM([Revenue EUR]) AS Actual_Revenue, SUM([Revenue Quota]) AS Revenue_Quota, SUM([Revenue Diff]) AS Revenue_Difference FROM dbo.DataSet_Monthly_Sales_and_Quota GROUP BY [Product Category] ORDER BY Actual_Revenue DESC
 </examples>
-    """,
-    tools=[get_database_schema],
+
+Now generate the SQL query for the user's question. Output ONLY the raw SQL — nothing else.
+""",
     output_key="sql_query"
 )
 
@@ -123,390 +219,257 @@ text_to_sql_runner = InMemoryRunner(agent=text_to_sql_agent, app_name='text_to_s
 
 
 # ============================================================================
-# Sequential Agent: Visualization + Explanation
+# Step 2: Pure-Python SQL Executor + Data Formatter (0 LLM API calls)
+# ============================================================================
+
+class PythonSQLExecutorAgent(BaseAgent):
+    """
+    Executes SQL and formats results without any LLM call.
+    """
+
+    async def _run_async_impl(
+        self, ctx: InvocationContext
+    ) -> AsyncGenerator[Event, None]:
+        sql = ctx.session.state.get('sql_query', '')
+
+        # Execute SQL directly — pure Python, no LLM
+        result_json_str = execute_sql_and_format(sql)
+
+        # Parse for building formatted_data
+        try:
+            result = json.loads(result_json_str)
+        except Exception:
+            result = {'success': False, 'data': [], 'columns': [], 'row_count': 0}
+
+        data = result.get('data', [])
+        columns = result.get('columns', [])
+        row_count = result.get('row_count', 0)
+
+        formatted = (
+            f"Data Results: {row_count} rows returned\n\n"
+            f"Columns: {', '.join(str(c) for c in columns)}\n\n"
+            f"Data (JSON):\n{json.dumps(data[:50], indent=2)}"
+        )
+
+        yield Event(
+            invocation_id=ctx.invocation_id,
+            author=self.name,
+            actions=EventActions(state_delta={
+                'query_results': result_json_str,
+                'formatted_data': formatted,
+            }),
+        )
+
+
+python_sql_executor = PythonSQLExecutorAgent(
+    name='sql_executor_agent',
+    description='Executes SQL and formats results — zero LLM calls',
+)
+
+
+# ============================================================================
+# Agent 4: Visualization (Chart Selection) — FIXED: Ghost Bar Prevention
 # ============================================================================
 
 visualization_agent = LlmAgent(
     model=GEMINI_MODEL,
     name='visualization_agent',
-    description="Generates Altair chart specifications from query results.",
-    instruction="""
-<system_prompt>
+    description="Generates Altair chart Python code from query results.",
+    instruction=f"""
+<role>
+You are a Senior Data Visualization Engineer. Generate executable Python/Altair code
+for a single professional chart. Output ONLY Python code — no markdown fences, no prose.
+</role>
 
-## Context
-You are part of a Business Intelligence pipeline that receives query results from a SQL database.
-The data comes in JSON format and needs to be transformed into visual insights.
-You have access to Python, Altair visualization library, and pandas for data manipulation.
+<CRITICAL_BASE_CHART_PATTERN>
+To prevent "Ghost Charts" (invisible marks), ALWAYS use this exact layering pattern:
+1. Define base with NO mark: `base = alt.Chart(df).encode(x=..., y=...)`
+2. Derive layers independently from base: `bars = base.mark_bar(...)`, `labels = base.mark_text(...)`
+3. Combine at the end: `chart = (bars + labels)`
+NEVER derive a second mark from a variable that already has a mark.
+</CRITICAL_BASE_CHART_PATTERN>
 
-## Objective
-Your primary goal is to generate executable Python code that creates an appropriate, insightful Altair chart from the provided data.
-Success is defined by: (1) code that runs without errors, (2) choosing the right chart type for the data, and (3) creating clear, professional visualizations.
+<chart_styling_logic>
+RULE 1: DONUT CHART (mark_arc)
+- Use ONLY for composition (<= 3 categories).
+- MUST include fully external labels using a dedicated text layer.
+- Layer 1 (Arc): `base.mark_arc(innerRadius=60, outerRadius=120)`
+- Layer 2 (Labels): `base.mark_text(radius=180, fontSize=12, fontWeight='bold').encode(text=alt.Text('val:Q', format=',.0f'))`
+- CRITICAL: Use `radius=180` to ensure labels never overlap with chart slices.
 
-## Mode
-Act as a Senior Data Visualization Engineer with expertise in Altair and the Grammar of Graphics.
-You understand best practices for visual encoding and choose chart types that best communicate the underlying patterns in data.
+RULE 2: HORIZONTAL BAR CHART (mark_bar)
+- Use for rankings or 4+ categories.
+- Numeric axis MUST use `scale=alt.Scale(domainMin=0, nice=True)`.
+- Use VALUE-BASED GRADIENT: `color=alt.Color('val:Q', scale=alt.Scale(range=['#1D4ED8', '#60A5FA']), sort='descending', legend=None)`
+- This creates a professional vertical gradient from dark blue (top) to light blue (bottom).
+</chart_styling_logic>
 
-## People of Interest
-Your charts will be viewed by business analysts and executives who need quick, clear insights from data.
-They value clarity, professional appearance, and actionable visual information over artistic complexity.
-
-## Attitude
-Be pragmatic in your chart choices. Choose simplicity over complexity.
-If the data is suitable for multiple chart types, choose the most conventional and immediately understandable option.
-Never create overly complex visualizations when a simple chart will suffice.
-
-## Style
-Output ONLY executable Python code.
-Do NOT include:
-- Markdown code blocks (no ```python)
-- Explanatory comments (unless critical for code function)
-- Text before or after the code
-- Multiple chart variations
-
-The code MUST:
-- Import altair as alt and pandas as pd
-- Assign the final chart to a variable named 'chart'
-- Be immediately executable without modification
-
-## Specifications
-HARD CONSTRAINTS:
-1. ALWAYS assign the final visualization to a variable named 'chart'
-2. NEVER include markdown code fences (```)
-3. ALWAYS include import statements (altair and pandas)
-4. NEVER create multiple charts - generate exactly ONE chart
-5. Chart dimensions: width=400-600, height=300-400 (reasonable for dashboards)
-
-</system_prompt>
-
-<instructions>
-Before generating the visualization code, follow this thinking process:
-
-<thinking_process>
-1. Analyze the structure of the provided data (columns, data types, number of rows)
-2. Identify the PRIMARY insight to visualize (comparison? trend? distribution? relationship?)
-3. Select the appropriate chart type based on data characteristics:
-   - Time series (date/time column) → Line chart
-   - Categorical comparison (categories + numeric values) → Bar chart
-   - Two numeric variables → Scatter plot
-   - Single aggregated metric → Bar or text
-   - Distribution of values → Histogram
-4. Determine appropriate encodings (x-axis, y-axis, color, size)
-5. Construct the Altair chart code with proper properties
-</thinking_process>
-
-CHART SELECTION GUIDE:
-- Time series data → alt.Chart(df).mark_line()
-- Categorical comparisons → alt.Chart(df).mark_bar()
-- Numeric relationships → alt.Chart(df).mark_point()
-- Single metric/KPI → alt.Chart(df).mark_bar() or mark_text()
-- Distributions → alt.Chart(df).mark_bar() with binning
-
-CODE STRUCTURE:
-1. Import libraries
-2. Create DataFrame from data
-3. Build Altair chart with:
-   - Appropriate mark type (.mark_bar(), .mark_line(), etc.)
-   - Proper encodings (.encode(x=..., y=...))
-   - Chart properties (.properties(title=..., width=..., height=...))
-   - Interactivity (.interactive()) for exploring data
-</instructions>
+<data_requirements>
+- import altair as alt and pandas as pd.
+- Build df from the data provided: {{formatted_data}}
+- Final chart assigned to variable `chart`.
+- Final line: `chart`
+</data_requirements>
 
 <examples>
-  <example>
-    <input>
-      Data: {{"category": ["A", "B", "C"], "value": [10, 20, 15]}}
-      Context: Categorical comparison of values
-    </input>
-    <output>import altair as alt
+Example 1: Donut with Labels
+import altair as alt
 import pandas as pd
-
-data = {{'category': ['A', 'B', 'C'], 'value': [10, 20, 15]}}
+data = [{{'Category': 'A', 'Value': 70}}, {{'Category': 'B', 'Value': 30}}]
 df = pd.DataFrame(data)
+base = alt.Chart(df).encode(
+    theta=alt.Theta('Value:Q', stack=True),
+    color=alt.Color('Category:N', scale=alt.Scale(range=['#1D4ED8', '#60A5FA']))
+)
+arc = base.mark_arc(innerRadius=60, outerRadius=120)
+text = base.mark_text(radius=180, fontSize=12, fontWeight='bold').encode(text=alt.Text('Value:Q', format=',.0f'))
+chart = (arc + text).properties(title='Composition Analysis', width=500, height=350).interactive()
+chart
 
-chart = alt.Chart(df).mark_bar().encode(
-    x='category',
-    y='value'
-).properties(
-    title='Category Values',
-    width=400,
-    height=300
-).interactive()</output>
-  </example>
-
-  <example>
-    <input>
-      Data: {{"date": ["2024-01-01", "2024-01-02", "2024-01-03"], "sales": [100, 150, 130]}}
-      Context: Time series of sales over time
-    </input>
-    <output>import altair as alt
+Example 2: Bar Chart with Value Gradient
+import altair as alt
 import pandas as pd
-
-data = {{'date': ['2024-01-01', '2024-01-02', '2024-01-03'], 'sales': [100, 150, 130]}}
+data = [{{'Item': 'X', 'Score': 95}}, {{'Item': 'Y', 'Score': 80}}, {{'Item': 'Z', 'Score': 60}}]
 df = pd.DataFrame(data)
-df['date'] = pd.to_datetime(df['date'])
-
-chart = alt.Chart(df).mark_line(point=True).encode(
-    x='date:T',
-    y='sales:Q'
-).properties(
-    title='Sales Over Time',
-    width=500,
-    height=300
-).interactive()</output>
-  </example>
-
-  <example>
-    <input>
-      Data: {{"product": ["Bike", "Helmet", "Bottle"], "quantity": [45, 120, 89], "revenue": [22500, 3600, 1780]}}
-      Context: Multi-metric comparison across products
-    </input>
-    <output>import altair as alt
-import pandas as pd
-
-data = {{'product': ['Bike', 'Helmet', 'Bottle'], 'quantity': [45, 120, 89], 'revenue': [22500, 3600, 1780]}}
-df = pd.DataFrame(data)
-
-chart = alt.Chart(df).mark_bar().encode(
-    x='product',
-    y='revenue',
-    color='product'
-).properties(
-    title='Revenue by Product',
-    width=450,
-    height=350
-).interactive()</output>
-  </example>
+base = alt.Chart(df).encode(
+    y=alt.Y('Item:N', sort='-x'),
+    x=alt.X('Score:Q', scale=alt.Scale(domainMin=0, nice=True)),
+    color=alt.Color('Score:Q', scale=alt.Scale(range=['#1D4ED8', '#60A5FA']), sort='descending', legend=None)
+)
+bars = base.mark_bar(cornerRadiusTopRight=4, cornerRadiusBottomRight=4)
+labels = base.mark_text(dx=5, align='left').encode(text=alt.Text('Score:Q', format=',.0f'))
+chart = (bars + labels).properties(title='Performance Ranking', width=500, height=350).interactive()
+chart
 </examples>
-    """,
+
+Generate the chart code now.
+""",
     output_key="chart_spec"
 )
+
+
+
+# ============================================================================
+# Agent 4.5: Chart Code Validator (Catcher for Ghost Chart bug)
+# ============================================================================
+
+def validate_and_fix_chart_code(chart_code: str) -> str:
+    """
+    Post-processing validator that detects and fixes the ghost bar pattern.
+    """
+    import re
+    
+    # 1. Clean code
+    code = chart_code.strip()
+    if code.startswith("```python"): code = code.replace("```python", "").replace("```", "").strip()
+    elif code.startswith("```"): code = code.replace("```", "").strip()
+
+    # Detect if labels are derived from bars/chart incorrectly
+    ghost_regex = re.compile(r'(\w+)\s*=\s*.*\.mark_bar\(.*?\).*\n.*?\1\.mark_text\(', re.DOTALL)
+    
+    if ('mark_bar' in code and 'mark_text' in code) and \
+       (ghost_regex.search(code) or 'base' not in code):
+        
+        print("[CHART VALIDATOR] ⚠ Ghost bar detected. Enforcing Base Pattern reconstruction...")
+        
+        # Try to find data section
+        lines = code.split('\n')
+        df_lines = []
+        for line in lines:
+            if 'alt.Chart' in line: break
+            df_lines.append(line)
+            
+        # Try to find columns and detect if multi-color was intended
+        y_match = re.search(r'alt\.Y\(["\']([^"\']+)', code)
+        x_match = re.search(r'alt\.X\(["\']([^"\']+)', code)
+        c_match = re.search(r'color=alt\.Color', code)
+        t_match = re.search(r'title=["\']([^"\']+)["\']', code)
+        
+        if y_match and x_match:
+            y_col = y_match.group(1)
+            x_col = x_match.group(1)
+            title = t_match.group(1) if t_match else "Data Analysis"
+            
+            rebuilt = df_lines + [f"base = alt.Chart(df).encode("]
+            rebuilt.append(f"    y=alt.Y('{y_col}', sort='-x', title='{y_col.split(':')[0]}'),")
+            rebuilt.append(f"    x=alt.X('{x_col}', scale=alt.Scale(domainMin=0, nice=True), title='{x_col.split(':')[0]}')")
+            
+            # Preserve or inject multi-color if it's likely a ranking/many rows
+            if c_match or 'TOP' in title.upper() or 'rank' in code.lower():
+                rebuilt[-1] = rebuilt[-1] + ","
+                rebuilt.append(f"    color=alt.Color('{y_col}', scale=alt.Scale(range=['#3B82F6', '#6366F1', '#8B5CF6', '#2563EB', '#1D4ED8', '#4F46E5']), legend=None)")
+                rebuilt.append(f")")
+                rebuilt.append(f"bars = base.mark_bar(opacity=1)")
+            else:
+                rebuilt.append(f")")
+                rebuilt.append(f"bars = base.mark_bar(color='#3B82F6', opacity=1)")
+                
+            rebuilt.append(f"labels = base.mark_text(dx=5, align='left').encode(text=alt.Text('{x_col}', format=',.0f'))")
+            rebuilt.append(f"chart = (bars + labels).properties(title='{title}', width=500, height=350).interactive()")
+            rebuilt.append(f"chart")
+            return '\n'.join(rebuilt)
+
+    # Ensure opacity=1 is present
+    if 'mark_bar' in code and 'opacity' not in code:
+        code = code.replace('mark_bar(', 'mark_bar(opacity=1, ')
+
+    return code
+
+
+# ============================================================================
+# Agent 5: Explanation
+# ============================================================================
 
 explanation_agent = LlmAgent(
     model=GEMINI_MODEL,
     name='explanation_agent',
-    description="Explains query results in plain language.",
     instruction="""
-<system_prompt>
+<role>
+You are a Senior Business Analyst. You write clear, direct summaries citing actual numbers.
+</role>
 
-## Context
-You are part of a Business Intelligence pipeline that processes query results from a SQL database.
-You receive structured data (tables, numbers, categories) that has been queried and visualized.
-Your role is to translate this data into actionable business insights.
+<rules>
+1. EXACTLY 2-3 sentences.
+2. ALWAYS reference specific numbers from the data.
+3. NEVER use technical terms like "query", "SQL", "rows", or "table".
+4. Use **bold** for the single most important number.
+</rules>
 
-## Objective
-Your primary goal is to provide clear, concise explanations of what the data reveals.
-Success is defined by: (1) non-technical language, (2) highlighting key insights, and (3) being concise (2-4 sentences).
+<data>
+{formatted_data}
+</data>
 
-## Mode
-Act as a Senior Business Analyst who specializes in translating complex data into executive summaries.
-You have the ability to identify patterns, outliers, and business-relevant insights quickly.
-You communicate with clarity and focus on what matters most.
-
-## People of Interest
-Your audience consists of business stakeholders, executives, and non-technical team members.
-They need quick, actionable insights without SQL jargon or technical terminology.
-They value specificity (actual numbers) and business context over technical details.
-
-## Attitude
-Be direct and insight-focused. Avoid hedging language ("it seems", "possibly", "might indicate").
-State what the data shows clearly and confidently.
-If the data is empty or inconclusive, state that plainly without apologizing.
-Never make assumptions beyond what the data actually shows.
-
-## Style
-Write in plain English using short, declarative sentences.
-Use markdown for emphasis when appropriate (**bold** for key metrics).
-Write 2-4 sentences maximum - be concise.
-Focus on the "so what?" - why this data matters.
-
-## Specifications
-HARD CONSTRAINTS:
-1. Write EXACTLY 2-4 sentences (no more, no less)
-2. NEVER use SQL terminology (queries, joins, WHERE clauses, etc.)
-3. ALWAYS include specific numbers when available
-4. NEVER use technical jargon (schema, database, aggregation, etc.)
-5. If data is empty, acknowledge it in 1-2 sentences
-
-</system_prompt>
-
-<instructions>
-Before writing your explanation, follow this thinking process:
-
-<thinking_process>
-1. Identify what question the data is answering
-2. Scan for the KEY insight (highest value? trend? outlier? total?)
-3. Note specific numbers that matter (ranges, totals, top values)
-4. Identify any notable patterns (all in one category? steady growth? decline?)
-5. Formulate 2-4 sentences that capture the "so what?"
-</thinking_process>
-
-EXPLANATION STRUCTURE:
-- Sentence 1: State the main finding (what the data shows)
-- Sentence 2: Provide supporting details (specific numbers, ranges, categories)
-- Sentence 3 (optional): Highlight a pattern or notable insight
-- Sentence 4 (optional): Provide context if relevant
-
-LANGUAGE GUIDELINES:
-- Replace "query returned" with "The analysis shows" or "The data reveals"
-- Replace "rows" with "items", "products", "orders", etc. (be specific)
-- Focus on business terms: revenue, sales, customers, products (not tables/columns)
-- Use active voice: "Sales increased" not "An increase in sales was observed"
-</instructions>
-
-<examples>
-  <example>
-    <input>
-      Data: Top 10 products by price
-      Results: 10 products, prices ranging from $1,200 to $2,499, all from "Mountain Bikes" category
-    </input>
-    <output>The analysis shows the 10 highest-priced products in the catalog. The most expensive item costs **$2,499**, while prices range from $1,200 to $2,499. Notably, all top products belong to the **Mountain Bikes** category.</output>
-  </example>
-
-  <example>
-    <input>
-      Data: Total orders by month for 2024
-      Results: 12 months, total of 4,523 orders, peak in December (612 orders), lowest in January (201 orders)
-    </input>
-    <output>The business processed **4,523 orders** throughout 2024. Order volume peaked in **December with 612 orders**, while January had the lowest activity at 201 orders. This shows strong seasonal variation with higher demand in the final quarter.</output>
-  </example>
-
-  <example>
-    <input>
-      Data: Revenue by product category
-      Results: 5 categories, Bikes ($245,000), Accessories ($89,000), Clothing ($45,000), Components ($67,000), Other ($12,000)
-    </input>
-    <output>**Bikes** dominate revenue at $245,000, representing more than half of total sales. Accessories and Components contribute $89,000 and $67,000 respectively, while Clothing and Other categories generate smaller amounts.</output>
-  </example>
-
-  <example>
-    <input>
-      Data: Customers who purchased in the last 30 days
-      Results: Empty dataset (0 rows)
-    </input>
-    <output>No customers made purchases in the last 30 days. This indicates a significant drop in recent sales activity that may require immediate attention.</output>
-  </example>
-</examples>
-    """,
+Write the business explanation now.
+""",
     output_key="explanation_text"
 )
 
-# Sequential Agent: Visualization → Explanation
-# These agents work together on the query results
+
+# ============================================================================
+# Sequential pipeline: Visualization + Explanation
+# ============================================================================
+
 insight_pipeline = SequentialAgent(
     name='insight_pipeline',
     sub_agents=[visualization_agent, explanation_agent],
     description="Generates visualization and explanation from query results"
 )
 
-# Runner for the insight pipeline
 insight_runner = InMemoryRunner(agent=insight_pipeline, app_name='insights')
 
 
 # ============================================================================
-# Agent 2: SQL Executor
-# ============================================================================
-
-sql_executor_agent = LlmAgent(
-    model=GEMINI_MODEL,
-    name='sql_executor_agent',
-    description="Executes SQL queries against the database and returns results.",
-    instruction="""
-<system_prompt>
-
-## Context
-You are a SQL execution agent in a Business Intelligence pipeline.
-You receive SQL queries from the text-to-SQL agent and execute them against the database.
-
-## Objective
-Your goal is to execute the provided SQL query and return the results in a structured format.
-Success is defined by: (1) successfully executing valid SQL, (2) returning data in JSON format, (3) handling errors gracefully.
-
-## Mode
-Act as a Database Execution Engine.
-You take SQL queries as input and return query results.
-
-## Attitude
-Be reliable and efficient.
-Always use the execute_sql_and_format tool to run queries.
-Return results exactly as provided by the tool.
-
-## Specifications
-HARD CONSTRAINTS:
-1. ALWAYS use the execute_sql_and_format tool to execute queries
-2. The SQL query is provided in the state variable: {sql_query}
-3. Return the tool's output directly without modification
-4. Do NOT try to execute queries without the tool
-
-</system_prompt>
-
-<instructions>
-1. Retrieve the SQL query from state: {sql_query}
-2. Use the execute_sql_and_format tool to execute it
-3. Return the tool's response (JSON with success, data, columns, row_count)
-</instructions>
-    """,
-    tools=[execute_sql_and_format],
-    output_key="query_results"
-)
-
-
-# ============================================================================
-# Agent 3: Data Formatter for Visualization
-# ============================================================================
-
-data_formatter_agent = LlmAgent(
-    model=GEMINI_MODEL,
-    name='data_formatter_agent',
-    description="Formats query results for visualization and explanation agents.",
-    instruction="""
-<system_prompt>
-
-## Context
-You are a data formatting agent in the BI pipeline.
-You receive query results in JSON format and prepare them for the visualization and explanation agents.
-
-## Objective
-Extract and format the data from query results so downstream agents can work with it effectively.
-
-## Instructions
-1. Parse the query results from: {query_results}
-2. Extract the 'data' field (list of dictionaries)
-3. Format it as a clear, readable JSON structure
-4. Include information about:
-   - Number of rows returned
-   - Column names
-   - Sample data (first 10 rows if many)
-
-Output format:
-```
-Data Results: [row count] rows returned
-
-Columns: [column names]
-
-Data (as JSON):
-[formatted data]
-```
-
-</system_prompt>
-    """,
-    output_key="formatted_data"
-)
-
-
-# ============================================================================
-# Root Agent: Complete BI Pipeline (SequentialAgent)
+# Root Agent: Complete BI Pipeline
 # ============================================================================
 
 root_agent = SequentialAgent(
     name='root_agent',
-    description="Complete BI pipeline: natural language → SQL → execution → visualization → explanation",
+    description="Complete BI pipeline",
     sub_agents=[
-        text_to_sql_agent,      # Step 1: Generate SQL from question
-        sql_executor_agent,      # Step 2: Execute SQL and get results
-        data_formatter_agent,    # Step 3: Format data for downstream agents
-        insight_pipeline         # Step 4: Visualize and explain (Sequential: viz → explanation)
+        text_to_sql_agent,
+        python_sql_executor,
+        insight_pipeline
     ]
 )
 
-# Runner for the root agent
 root_runner = InMemoryRunner(agent=root_agent, app_name='bi_agent')
