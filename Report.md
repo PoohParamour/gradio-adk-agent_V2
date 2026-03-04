@@ -1,9 +1,5 @@
 # GBI Analytics Agent — Complete Technical Report Data
 
-> Generated from full recursive scan of all source files.
-> Every quote is taken verbatim from the actual code.
-> No assumptions. No inventions.
-
 ---
 
 ## SECTION 1: PROJECT STRUCTURE
