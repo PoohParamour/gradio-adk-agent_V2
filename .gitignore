@@ -1,0 +1,28 @@
+# Environment & secrets
+.env
+bi_agent/.env
+
+# Virtual environment
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# uv
+uv.lock
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Evaluation raw output (keep report.md, ignore raw JSON if desired)
+# evaluation/results/raw_results.json

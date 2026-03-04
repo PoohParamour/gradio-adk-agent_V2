@@ -1,0 +1,578 @@
+/* ============================================================
+   ADVENTUREBIKES BI AGENT — 2026 PREMIUM
+   Clean · Spacious · Enterprise-grade
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500&display=swap');
+
+/* ── Design tokens ─────────────────────────────────────────────────────── */
+:root {
+  --bg:      #080D1A;
+  --bg-1:    #0C1425;
+  --bg-2:    #101C34;
+  --gl:      rgba(255, 255, 255, 0.03);
+  --gl-h:    rgba(255, 255, 255, 0.06);
+  --bd:      rgba(255, 255, 255, 0.07);
+  --bd-h:    rgba(255, 255, 255, 0.14);
+  --blue:    #3B82F6;
+  --blue-l:  #60A5FA;
+  --ind:     #6366F1;
+  --grn:     #10B981;
+  --t1:      #F1F5F9;
+  --t2:      #94A3B8;
+  --t3:      #4B5E7A;
+  --r-sm:    8px;
+  --r-md:    14px;
+  --r-lg:    20px;
+  --sha-card: 0 24px 64px rgba(0,0,0,.55), 0 4px 20px rgba(0,0,0,.3);
+  --sha-glow: 0 0 0 3px rgba(59,130,246,.10), 0 4px 32px rgba(0,0,0,.4);
+}
+
+/* ── Reset ──────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+body,
+.gradio-container,
+.gradio-container .main,
+.gradio-container .app,
+#component-0 {
+  background:   var(--bg) !important;
+  font-family:  'Inter', system-ui, sans-serif !important;
+  color:        var(--t1) !important;
+  min-height:   100vh;
+}
+
+.gradio-container { max-width: 100% !important; padding: 0 !important; }
+footer, .built-with { display: none !important; }
+
+::-webkit-scrollbar       { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--bd-h); border-radius: 4px; }
+
+/* ── Strip Gradio's default card/panel chrome ───────────────────────────── */
+/* NOTE: intentionally excluded padding here — per-component rules set their own */
+.block,
+.form,
+.panel,
+.gap,
+.tabitem {
+  background: transparent !important;
+  border:     none        !important;
+  box-shadow: none        !important;
+}
+
+/* ── NAVBAR ─────────────────────────────────────────────────────────────── */
+.ab-nav {
+  position:         sticky;
+  top:              0;
+  z-index:          100;
+  display:          flex;
+  align-items:      center;
+  justify-content:  space-between;
+  padding:          0 32px;
+  height:           64px;
+  background:       rgba(8, 13, 26, 0.88);
+  backdrop-filter:  blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border-bottom:    1px solid var(--bd);
+}
+
+.ab-nav-l,
+.ab-nav-r { display: flex; align-items: center; gap: 16px; }
+
+.ab-main-title {
+  font-size: 20px !important;
+  font-weight: 700 !important;
+  color: var(--t1) !important;
+  margin: 0 !important;
+  letter-spacing: -0.02em !important;
+  background: linear-gradient(135deg, #F1F5F9 20%, #93C5FD 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.ab-model { font-size: 11px; color: var(--t3); font-weight: 400; }
+
+.ab-live {
+  display:       flex;
+  align-items:   center;
+  gap:           6px;
+  padding:       4px 11px 4px 9px;
+  background:    rgba(16, 185, 129, .08);
+  border:        1px solid rgba(16, 185, 129, .22);
+  border-radius: 100px;
+  font-size:     11px;
+  font-weight:   600;
+  color:         var(--grn);
+  letter-spacing:.05em;
+  text-transform:uppercase;
+}
+
+.ab-dot {
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--grn);
+  animation: pulse-dot 2.2s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1;  transform: scale(1);    }
+  50%       { opacity: .5; transform: scale(0.85); }
+}
+
+/* ── HERO ───────────────────────────────────────────────────────────────── */
+.ab-hero {
+  display:        flex          !important;
+  flex-direction: column        !important;
+  align-items:    center        !important;
+  width:          100%          !important;
+  max-width:      720px         !important;
+  margin:         0 auto        !important;
+  padding:        72px 24px 24px !important;
+  gap:            0             !important;
+}
+
+.ab-htitle {
+  text-align:    center;
+  margin-bottom: 26px;
+}
+
+.ab-htitle h1 {
+  font-size:    38px;
+  font-weight:  700;
+  letter-spacing: -.03em;
+  line-height:  1.1;
+  background:   linear-gradient(135deg, #F1F5F9 20%, #93C5FD 60%, #818CF8 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 10px;
+}
+
+.ab-htitle p {
+  font-size:   13px;
+  color:       var(--t3);
+  font-weight: 400;
+  letter-spacing: .04em;
+}
+
+/* ── SEARCH GROUP ──────────────────────────────────────────────────────── */
+.ab-search {
+  width:          100%               !important;
+  background:     rgba(12,20,37,.85) !important;
+  border:         1px solid var(--bd-h) !important;
+  border-radius:  var(--r-lg)        !important;
+  overflow:       hidden             !important;
+  transition:     border-color .2s, box-shadow .2s !important;
+  box-shadow:     0 4px 28px rgba(0,0,0,.35) !important;
+}
+
+.ab-search:focus-within {
+  border-color: rgba(59, 130, 246, .50) !important;
+  box-shadow:   var(--sha-glow)         !important;
+}
+
+/* Gradio group wrapper inside .ab-search */
+.ab-search > .block,
+.ab-search > .form,
+.ab-search > div > .block,
+.ab-search > div > .form {
+  background: transparent !important;
+  padding:    0           !important;
+  gap:        0           !important;
+  border:     none        !important;
+}
+
+/* Textbox inside search */
+.ab-input,
+.ab-input .wrap,
+.ab-input label,
+.ab-input .block {
+  background: transparent !important;
+  border:     none        !important;
+  box-shadow: none        !important;
+  padding:    0           !important;
+}
+
+.ab-input textarea {
+  background:  transparent     !important;
+  border:      none            !important;
+  color:       var(--t1)       !important;
+  font-size:   15px            !important;
+  font-family: 'Inter', sans-serif !important;
+  padding:     20px 24px 8px   !important;
+  resize:      none            !important;
+  box-shadow:  none            !important;
+  outline:     none            !important;
+  line-height: 1.55            !important;
+  caret-color: var(--blue-l)   !important;
+}
+
+.ab-input textarea::placeholder { color: var(--t3) !important; }
+.ab-input textarea:focus         { box-shadow: none !important; outline: none !important; }
+
+/* ── ABSOLUTE ACTION BUTTON OVERRIDES ────────────────────────────────────── */
+.ab-actions {
+  display:         flex            !important;
+  align-items:     center          !important;
+  justify-content: center          !important;
+  gap:             20px            !important;
+  padding:         20px            !important;
+  background:      transparent     !important;
+}
+
+/* Force Analyze Button (Primary) */
+button.ab-primary {
+  background:      #008000         !important;
+  color:           #FFFFFF         !important;
+  width:           120px           !important;
+  height:          40px            !important;
+  min-width:       120px           !important;
+  min-height:      40px            !important;
+  border-radius:   50px            !important;
+  border:          none            !important;
+  font-weight:     800             !important;
+  font-size:       16px            !important;
+  padding:         0               !important;
+  margin:          0               !important;
+  cursor:          pointer         !important;
+  box-shadow:      0 0 15px rgba(46, 204, 113, 0.6) !important;
+}
+
+/* Force Clear Button (Ghost/Secondary) */
+button.ab-ghost {
+  background:      #FF0000         !important;
+  color:           #FFFFFF         !important;
+  width:           120px           !important;
+  height:          40px            !important;
+  min-width:       120px           !important;
+  min-height:      40px            !important;
+  border-radius:   50px            !important;
+  border:          none            !important;
+  font-weight:     800             !important;
+  font-size:       16px            !important;
+  padding:         0               !important;
+  margin:          0               !important;
+  cursor:          pointer         !important;
+  box-shadow:      0 0 15px rgba(255, 0, 0, 0.6) !important;
+}
+
+button.ab-primary:hover { background: #006400 !important; transform: scale(1.05) !important; }
+button.ab-ghost:hover   { background: #CC0000 !important; transform: scale(1.05) !important; }
+
+/* ── SUGGESTION CHIPS ───────────────────────────────────────────────────── */
+.ab-chips {
+  display:         flex        !important;
+  flex-wrap:       wrap        !important;
+  justify-content: center      !important;
+  gap:             8px         !important;
+  padding:         6px 24px 52px !important;
+  max-width:       880px       !important;
+  margin:          8 px  !important;
+  width:           100%        !important;
+}
+
+.ab-chip button {
+  background:    var(--gl)  !important;
+  color:         var(--t2)  !important;
+  border:        1px solid var(--bd) !important;
+  border-radius: 100px      !important;
+  font-size:     12px       !important;
+  font-weight:   400        !important;
+  padding:       6px 15px   !important;
+  cursor:        pointer    !important;
+  white-space:   nowrap     !important;
+  transition:    all .15s   !important;
+  letter-spacing:.01em      !important;
+}
+
+.ab-chip button:hover {
+  background:   rgba(59, 130, 246, .09) !important;
+  border-color: rgba(59, 130, 246, .28) !important;
+  color:        var(--blue-l)           !important;
+}
+
+/* ── RESULTS AREA ───────────────────────────────────────────────────────── */
+.ab-results {
+  max-width:      1100px     !important;
+  margin:         0 auto     !important;
+  width:          100%       !important;
+  padding:        0 24px 96px !important;
+  display:        flex       !important;
+  flex-direction: column     !important;
+  gap:            20px       !important;
+}
+
+/* ── KPI ROW ────────────────────────────────────────────────────────────── */
+.ab-kpi-row {
+  display:       flex;
+  gap:           10px;
+  margin-bottom: 25px !important;
+  animation:     fade-up .35s ease;
+}
+
+.ab-kpi-card {
+  flex:           1;
+  background:     var(--gl);
+  border:         1px solid var(--bd);
+  border-radius:  var(--r-md);
+  padding:        14px 18px;
+  display:        flex;
+  flex-direction: column;
+  gap:            3px;
+  min-width:      0;
+}
+
+.ab-kpi-src {
+  border-color: rgba(59, 130, 246, .20);
+  background:   rgba(59, 130, 246, .04);
+}
+
+.ab-kv {
+  font-size:            22px;
+  font-weight:          700;
+  color:                var(--t1);
+  font-variant-numeric: tabular-nums;
+  letter-spacing:       -.03em;
+  line-height:          1;
+}
+
+.ab-kl {
+  font-size:     10px;
+  color:         var(--t3);
+  font-weight:   500;
+  text-transform:uppercase;
+  letter-spacing:.07em;
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+
+/* ── TABS ───────────────────────────────────────────────────────────────── */
+.ab-tabs { background: transparent !important; }
+
+.ab-tabs > .tab-nav,
+.ab-tabs   .tab-nav {
+  background:    transparent !important;
+  border:        none        !important;
+  border-bottom: 1px solid var(--bd) !important;
+  padding:       0           !important;
+  gap:           0           !important;
+  margin-bottom: 28px        !important;
+}
+
+.ab-tabs .tab-nav button {
+  background:    transparent                 !important;
+  color:         var(--t3)                   !important;
+  border:        none                        !important;
+  border-bottom: 2px solid transparent       !important;
+  font-size:     13px                        !important;
+  font-weight:   500                         !important;
+  padding:       11px 24px                   !important;
+  cursor:        pointer                     !important;
+  transition:    color .15s                  !important;
+  margin-bottom: -1px                        !important;
+  letter-spacing:.01em                       !important;
+}
+
+.ab-tabs .tab-nav button:hover   { color: var(--t2) !important; }
+
+.ab-tabs .tab-nav button.selected {
+  color:        var(--t1)    !important;
+  border-bottom-color: var(--blue) !important;
+}
+
+/* ── CHART CARD ─────────────────────────────────────────────────────────── */
+/*
+ * Gradio renders gr.Plot(elem_id="ab-chart") as:
+ *   div#ab-chart   ← outer wrapper (our ID goes here)
+ *     └─ div.block ← Gradio's block wrapper — styled as the white card
+ *          └─ figure / .vega-embed  ← actual SVG/canvas from vega-embed
+ *
+ * Keep this CSS simple — flex layout on the chart block can break vega-embed.
+ */
+#ab-chart {
+  margin-bottom: 18px !important;
+}
+
+#ab-chart > .block {
+  background:    #FFFFFF         !important;
+  border-radius: var(--r-lg)     !important;
+  min-height:    440px           !important;
+  box-shadow:    var(--sha-card) !important;
+  padding:       24px 28px       !important;
+  border:        none            !important;
+  overflow:      visible         !important;
+  width:         100%            !important;
+}
+
+#ab-chart figure       { margin: 0 !important; }
+#ab-chart .vega-embed  { overflow: visible !important; }
+#ab-chart canvas,
+#ab-chart svg          { display: block !important; }
+
+/* ── INSIGHT CARD ────────────────────────────────────────────────────────── */
+.ab-insight {
+  background:    rgba(12, 20, 37, .65)  !important;
+  border:        1px solid var(--bd)    !important;
+  border-left:   3px solid var(--blue)  !important;
+  border-radius: 0 var(--r-md) var(--r-md) 0 !important;
+  padding:       18px 24px              !important;
+  backdrop-filter: blur(12px)           !important;
+  min-height:    56px                   !important;
+}
+
+/* Gradio group chrome inside insight card */
+.ab-insight > .block,
+.ab-insight > .form { background: transparent !important; }
+
+.ab-insight-text {
+  font-size:   14px;
+  line-height: 1.75;
+  color:       white !important;
+  margin:      0;
+}
+
+.ab-insight-text b,
+.ab-insight-text strong { color: var(--t1); font-weight: 600; }
+
+.ab-insight-empty {
+  font-size:   13px;
+  color:       white !important;
+  font-style:  italic;
+  text-align:  center;
+  margin:      0;
+  padding:     4px 0;
+}
+
+/* ── PAGE INFO ───────────────────────────────────────────────────────────── */
+.ab-pg-info {
+  display:              block;
+  font-size:            12px;
+  color:                var(--t3);
+  font-variant-numeric: tabular-nums;
+  padding-bottom:       10px;
+  letter-spacing:       .02em;
+}
+
+/* ── DATA TABLE ──────────────────────────────────────────────────────────── */
+#ab-table .wrap {
+  background:    var(--bg-1)    !important;
+  border:        1px solid var(--bd) !important;
+  border-radius: var(--r-md)    !important;
+  overflow:      hidden         !important;
+}
+
+#ab-table table {
+  border-collapse: collapse !important;
+  width:           100%     !important;
+}
+
+#ab-table thead tr {
+  background:    var(--bg-2)    !important;
+  border-bottom: 1px solid var(--bd-h) !important;
+}
+
+#ab-table thead th {
+  color:          var(--t3)  !important;
+  font-size:      10px       !important;
+  font-weight:    600        !important;
+  text-transform: uppercase  !important;
+  letter-spacing: .07em      !important;
+  padding:        10px 14px  !important;
+  border:         none       !important;
+  background:     var(--bg-2) !important;
+  white-space:    nowrap     !important;
+}
+
+#ab-table tbody tr {
+  border-bottom: 1px solid rgba(255,255,255,.03) !important;
+  transition:    background .1s !important;
+}
+
+#ab-table tbody tr:hover { background: rgba(255,255,255,.025) !important; }
+
+#ab-table tbody td {
+  color:                var(--t1)           !important;
+  font-size:            13px                !important;
+  padding:              9px 14px            !important;
+  border:               none                !important;
+  font-variant-numeric: tabular-nums        !important;
+}
+
+/* ── PAGINATION ──────────────────────────────────────────────────────────── */
+.ab-pgrow {
+  display:     flex       !important;
+  align-items: center     !important;
+  padding:     14px 0 0   !important;
+  gap:         8px        !important;
+}
+
+.ab-pgbtn button {
+  background:    var(--gl)   !important;
+  color:         var(--t2)   !important;
+  border:        1px solid var(--bd) !important;
+  border-radius: var(--r-sm) !important;
+  font-size:     12px        !important;
+  font-weight:   400         !important;
+  padding:       7px 16px    !important;
+  cursor:        pointer     !important;
+  transition:    all .15s    !important;
+}
+
+.ab-pgbtn button:hover {
+  color:        var(--t1)   !important;
+  border-color: var(--bd-h) !important;
+  background:   var(--gl-h) !important;
+}
+
+/* ── SQL EDITOR ──────────────────────────────────────────────────────────── */
+#ab-sql {
+  border:        1px solid var(--bd) !important;
+  border-radius: var(--r-md)         !important;
+  overflow:      hidden              !important;
+}
+
+#ab-sql .cm-editor,
+#ab-sql .cm-scroller { background: #060C1C !important; }
+
+#ab-sql .cm-content {
+  font-family:  'JetBrains Mono', 'Fira Code', monospace !important;
+  font-size:    13px                  !important;
+  line-height:  1.65                  !important;
+  color:        #A5B4FC               !important;
+  padding:      20px 16px             !important;
+  caret-color:  var(--blue-l)         !important;
+}
+
+#ab-sql .cm-gutters {
+  background:   #060C1C              !important;
+  border-right: 1px solid var(--bd)  !important;
+  color:        var(--t3)            !important;
+  font-family:  'JetBrains Mono', monospace !important;
+  font-size:    12px                 !important;
+  padding:      0 8px                !important;
+  min-width:    40px                 !important;
+}
+
+#ab-sql .cm-activeLine        { background: rgba(255,255,255,.025) !important; }
+#ab-sql .cm-activeLineGutter  { background: rgba(255,255,255,.025) !important; }
+
+/* ── RESPONSIVE ──────────────────────────────────────────────────────────── */
+@media (max-width: 800px) {
+  .ab-hero   { padding: 52px 16px 20px !important; }
+  .ab-htitle h1 { font-size: 28px !important; }
+  .ab-chips  { padding: 6px 16px 36px !important; }
+  .ab-results { padding: 0 16px 60px !important; }
+  .ab-kpi-row { flex-wrap: wrap; }
+  .ab-kpi-card { flex: calc(50% - 5px); }
+  .ab-subt { display: none; }
+}
+
+@media (max-width: 480px) {
+  .ab-nav  { padding: 0 16px; }
+  .ab-kpi-card { flex: 100%; }
+  .ab-htitle h1 { font-size: 24px !important; }
+}

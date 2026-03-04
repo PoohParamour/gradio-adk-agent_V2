@@ -1,0 +1,182 @@
+[
+  {
+    "id": 1,
+    "question": "What is the total revenue by product category?",
+    "expected_sql_keywords": ["DataSet_Monthly_Sales", "Product_Category", "SUM", "Revenue_EUR", "GROUP BY"],
+    "expected_tables": ["dbo.DataSet_Monthly_Sales"],
+    "expected_chart_type": "bar",
+    "expected_row_count": 5,
+    "notes": "All 5 bike categories, no filter"
+  },
+  {
+    "id": 2,
+    "question": "Show monthly revenue trend for 2024",
+    "expected_sql_keywords": ["DataSet_Monthly_Sales", "Calendar_Month_ISO", "SUM", "Revenue_EUR", "GROUP BY", "2024"],
+    "expected_tables": ["dbo.DataSet_Monthly_Sales"],
+    "expected_chart_type": "line",
+    "expected_row_count": 12,
+    "notes": "12 months in 2024, time series → must be line chart"
+  },
+  {
+    "id": 3,
+    "question": "What are the top 5 most expensive products?",
+    "expected_sql_keywords": ["Dim_Product", "Transfer_Price_EUR", "TOP 5", "ORDER BY", "DESC"],
+    "expected_tables": ["dbo.Dim_Product"],
+    "expected_chart_type": "bar",
+    "expected_row_count": 5,
+    "notes": "Uses Dim_Product, not DataSet"
+  },
+  {
+    "id": 4,
+    "question": "Which country has the highest total sales amount?",
+    "expected_sql_keywords": ["DataSet_Monthly_Sales", "Sales_Country", "SUM", "Sales_Amount", "GROUP BY", "ORDER BY"],
+    "expected_tables": ["dbo.DataSet_Monthly_Sales"],
+    "expected_chart_type": "bar",
+    "expected_row_count": 6,
+    "notes": "6 countries in the database"
+  },
+  {
+    "id": 5,
+    "question": "How does actual revenue compare to quota by product category?",
+    "expected_sql_keywords": ["DataSet_Monthly_Sales_and_Quota", "[Product Category]", "[Revenue EUR]", "[Revenue Quota]", "GROUP BY"],
+    "expected_tables": ["dbo.DataSet_Monthly_Sales_and_Quota"],
+    "expected_chart_type": "bar",
+    "expected_row_count": 5,
+    "notes": "Must use bracket notation for space-column table"
+  },
+  {
+    "id": 6,
+    "question": "What is the total discount by sales channel?",
+    "expected_sql_keywords": ["DataSet_Monthly_Sales", "Sales_Channel", "SUM", "Discount_EUR", "GROUP BY"],
+    "expected_tables": ["dbo.DataSet_Monthly_Sales"],
+    "expected_chart_type": "bar",
+    "expected_row_count": 2,
+    "notes": "Only 2 channels: Internet Sales and Reseller"
+  },
+  {
+    "id": 7,
+    "question": "Show annual revenue trend from 2021 to 2025",
+    "expected_sql_keywords": ["DataSet_Monthly_Sales", "Calendar_Year", "SUM", "Revenue_EUR", "GROUP BY", "ORDER BY"],
+    "expected_tables": ["dbo.DataSet_Monthly_Sales"],
+    "expected_chart_type": "line",
+    "expected_row_count": 5,
+    "notes": "Year column is time series → line chart"
+  },
+  {
+    "id": 8,
+    "question": "List all product categories and their average transfer price",
+    "expected_sql_keywords": ["Dim_Product", "Product_Category", "AVG", "Transfer_Price_EUR", "GROUP BY"],
+    "expected_tables": ["dbo.Dim_Product"],
+    "expected_chart_type": "bar",
+    "expected_row_count": 5,
+    "notes": "Aggregation on product master table"
+  },
+  {
+    "id": 9,
+    "question": "What are the total units sold per country in 2023?",
+    "expected_sql_keywords": ["DataSet_Monthly_Sales", "Sales_Country", "SUM", "Sales_Amount", "2023", "GROUP BY"],
+    "expected_tables": ["dbo.DataSet_Monthly_Sales"],
+    "expected_chart_type": "bar",
+    "expected_row_count": 6,
+    "notes": "Filtered by year, grouped by country"
+  },
+  {
+    "id": 10,
+    "question": "Show revenue breakdown by sales channel for Mountain Bikes",
+    "expected_sql_keywords": ["DataSet_Monthly_Sales", "Sales_Channel", "SUM", "Revenue_EUR", "Mountain Bikes", "GROUP BY"],
+    "expected_tables": ["dbo.DataSet_Monthly_Sales"],
+    "expected_chart_type": "bar",
+    "expected_row_count": 2,
+    "notes": "Filtered by product category, grouped by channel"
+  },
+  {
+    "id": 11,
+    "question": "What is the gross profit by product category?",
+    "expected_sql_keywords": ["DataSet_Monthly_Sales_and_Quota", "[Gross Profit EUR]", "[Product Category]", "SUM", "GROUP BY"],
+    "expected_tables": ["dbo.DataSet_Monthly_Sales_and_Quota"],
+    "expected_chart_type": "bar",
+    "expected_row_count": 5,
+    "notes": "Gross Profit EUR is in DataSet_Monthly_Sales_and_Quota"
+  },
+  {
+    "id": 12,
+    "question": "How many distinct products are in each price segment?",
+    "expected_sql_keywords": ["Dim_Product", "Price_Segment", "COUNT", "GROUP BY"],
+    "expected_tables": ["dbo.Dim_Product"],
+    "expected_chart_type": "bar",
+    "expected_row_count_min": 2,
+    "notes": "COUNT of products by price segment"
+  },
+  {
+    "id": 13,
+    "question": "Show top 10 sales offices by total revenue in EUR",
+    "expected_sql_keywords": ["DataSet_Monthly_Sales", "Sales_Office", "SUM", "Revenue_EUR", "TOP 10", "ORDER BY", "DESC"],
+    "expected_tables": ["dbo.DataSet_Monthly_Sales"],
+    "expected_chart_type": "bar",
+    "expected_row_count": 10,
+    "notes": "TOP 10, ordered by revenue"
+  },
+  {
+    "id": 14,
+    "question": "What is the monthly revenue trend for Germany in 2023?",
+    "expected_sql_keywords": ["DataSet_Monthly_Sales", "Calendar_Month_ISO", "Germany", "SUM", "Revenue_EUR", "GROUP BY", "2023"],
+    "expected_tables": ["dbo.DataSet_Monthly_Sales"],
+    "expected_chart_type": "line",
+    "expected_row_count": 12,
+    "notes": "Time series filtered by country + year → line chart"
+  },
+  {
+    "id": 15,
+    "question": "What is the total revenue and discount by product line?",
+    "expected_sql_keywords": ["DataSet_Monthly_Sales", "Product_Line", "SUM", "Revenue_EUR", "Discount_EUR", "GROUP BY"],
+    "expected_tables": ["dbo.DataSet_Monthly_Sales"],
+    "expected_chart_type": "bar",
+    "expected_row_count": 1,
+    "notes": "Only one product line: Bicycles"
+  },
+  {
+    "id": 16,
+    "question": "Show quarterly revenue comparison for 2022 and 2023",
+    "expected_sql_keywords": ["DataSet_Monthly_Sales", "Calendar_Quarter", "Calendar_Year", "SUM", "Revenue_EUR", "GROUP BY"],
+    "expected_tables": ["dbo.DataSet_Monthly_Sales"],
+    "expected_chart_type": "bar",
+    "expected_row_count": 8,
+    "notes": "4 quarters x 2 years = 8 rows"
+  },
+  {
+    "id": 17,
+    "question": "What is the average revenue per unit sold by product category?",
+    "expected_sql_keywords": ["DataSet_Monthly_Sales", "Product_Category", "SUM", "Revenue_EUR", "Sales_Amount", "GROUP BY"],
+    "expected_tables": ["dbo.DataSet_Monthly_Sales"],
+    "expected_chart_type": "bar",
+    "expected_row_count": 5,
+    "notes": "Computed metric: Revenue / Units"
+  },
+  {
+    "id": 18,
+    "question": "List all products with a transfer price above 1000 EUR",
+    "expected_sql_keywords": ["Dim_Product", "Transfer_Price_EUR", "WHERE", "1000", "ORDER BY"],
+    "expected_tables": ["dbo.Dim_Product"],
+    "expected_chart_type": "bar",
+    "expected_row_count_min": 1,
+    "notes": "Filtered product list, not aggregated"
+  },
+  {
+    "id": 19,
+    "question": "Show total revenue by global region",
+    "expected_sql_keywords": ["DataSet_Monthly_Sales", "Global_Region", "SUM", "Revenue_EUR", "GROUP BY"],
+    "expected_tables": ["dbo.DataSet_Monthly_Sales"],
+    "expected_chart_type": "bar",
+    "expected_row_count_min": 2,
+    "notes": "GROUP BY Global_Region"
+  },
+  {
+    "id": 20,
+    "question": "What is the revenue quota achievement rate by product category?",
+    "expected_sql_keywords": ["DataSet_Monthly_Sales_and_Quota", "[Product Category]", "[Revenue EUR]", "[Revenue Quota]", "GROUP BY"],
+    "expected_tables": ["dbo.DataSet_Monthly_Sales_and_Quota"],
+    "expected_chart_type": "bar",
+    "expected_row_count": 5,
+    "notes": "Achievement rate = actual / quota, uses quota table"
+  }
+]
